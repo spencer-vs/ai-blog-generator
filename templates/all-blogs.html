@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Blogs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-170 font-sans anitialiased">
+     <!-- NavBar -->
+     <nav class="bg-blue-600 p-4 text-white flex justify-between">
+        <div>
+            <h1 class="text-5xl font-bold">AI Blog Generator</h1>
+        </div>
+       <div>
+            <a href="" class="text-white hover:underline mx-4">Welcome {{ user.username }}</a> 
+           
+            <a href="/logout/" class="text-white hover:underline">Logout</a>
+
+        </div>
+     </nav>
+
+     <!-- Main Content Container -->
+
+     <div class="mr-3 ml-3container mx-auto mt-10 px-4 sn:px-0">
+        <div class="max-w-3xl mx-auto bg-white p-6 rounded-lg shadow-md border">
+            <!-- Blog Post Section -->
+             <section>
+                <h2 class="text-xl font-semibold mb-4 mt-5 ml-3">All Blog Post</h2>
+                  <div class="space-y-4 ">
+
+
+                    {% for article in blog_articles reversed %}
+                    <a href="/blog-details/{{article.id}}/">
+                        <div class="border border-grey-700 p-4 rounded p-4 shadow-md">
+                        <h3 class="text-lg font-bold mb-2">{{article.youtube_title}}</h3>
+                        <p>{{article.generated_content|truncatechars:80}}</p>
+                    </div>
+                    </a>
+
+                  {% endfor %}
+
+                    <!-- Repeat -->
+
+                     
+                  </div>
+             </section>
+        </div>
+     </div>
+
+       <footer class="text-center p-4 text-black mt-6">
+        Powered By <a href="#">Code With Tony</a>
+      </footer>
+</body>
+</html>
