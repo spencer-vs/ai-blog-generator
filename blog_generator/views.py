@@ -93,11 +93,17 @@ def get_youtube_title(video_id):
     
 def get_transcription(video_id):
     try:
-        transcript_list = YouTubeTranscriptApi().fetch(video_id)
-        transcript_text = " ".join([t.text for t in transcript_list])
+        # First, check if transcripts are available
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        if not transcript_list:
+            print("No transcripts available for video:", video_id)
+            return None
+        # Try to get the transcript (default to English)
+        transcript = transcript_list.find_transcript(['en'])
+        transcript_text = " ".join([t.text for t in transcript.fetch()])
         return transcript_text
     except Exception as e:
-        print("Transcript error:", e)
+        print(f"Transcript error for video {video_id}: {type(e).__name__}: {e}")
         return None
 # ---------------- AI BLOG GENERATION ---------------- #
 def generate_blog_from_transcript(transcription):
