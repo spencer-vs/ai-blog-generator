@@ -11,6 +11,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from groq import Groq
 from .models import BlogPost
 import re
+import requests
 
 
 
@@ -36,6 +37,7 @@ def generate_blog(request):
         print(f"Generating blog for: {yt_link}")
         # Extract video ID
         video_id = get_video_id(yt_link)
+        title = get_youtube_title(video_id)
         print("Extracted video ID:", video_id)
         if not video_id:
             return JsonResponse({'error': 'Invalid YouTube URL'}, status=400)
@@ -50,7 +52,7 @@ def generate_blog(request):
         # Save blog to database
         new_blog_article = BlogPost.objects.create(
             user=request.user,
-            youtube_title=f"YouTube Video {video_id}",
+            youtube_title=title,
             youtube_link=yt_link,
             generated_content=blog_content,
         )
@@ -75,6 +77,19 @@ def get_video_id(url):
         return None
     
     
+def get_youtube_title(video_id):
+    try:
+        url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            return data["title"]
+        return f"YouTube Video {video_id}"
+    except Exception as e:
+        print("Title fetch error:", e)
+        return f"YouTube Video {video_id}"
+    
+    
     
 def get_transcription(video_id):
     try:
@@ -93,8 +108,7 @@ def generate_blog_from_transcript(transcription):
             return None
         client = Groq(api_key=api_key)
         prompt = f"""
-        Based on the following transcript, write a professional blog article.
-        Do not mention YouTube.
+        Based on the generated transcript, create a blog post based on the YouTube video, covering all aspects of the video.
         Transcript:
         {transcription}
         Article:
