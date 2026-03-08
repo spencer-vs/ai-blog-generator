@@ -8,10 +8,12 @@ import json
 import os
 from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi
+import assemblyai
 from groq import Groq
 from .models import BlogPost
 import re
 import requests
+import time
 
 
 
@@ -92,19 +94,64 @@ def get_youtube_title(video_id):
     
     
 def get_transcription(video_id):
+    """Attempt to retrieve a transcript using YouTubeTranscriptApi.
+
+    If the YouTube API call fails (missing method, no transcript, etc.), we
+    fall back to AssemblyAI. This version avoids using
+    ``list_transcripts`` which may not exist in older installations.
+    """
+
     try:
-        # First, check if transcripts are available
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        if not transcript_list:
-            print("No transcripts available for video:", video_id)
-            return None
-        # Try to get the transcript (default to English)
-        transcript = transcript_list.find_transcript(['en'])
-        transcript_text = " ".join([t.text for t in transcript.fetch()])
+        # instantiate client (allows better compatibility across versions)
+        api = YouTubeTranscriptApi()
+        transcript_data = api.fetch(video_id, languages=["en"])
+        # the returned object is iterable of FetchedTranscriptSnippet
+        transcript_text = " ".join([snippet.text for snippet in transcript_data])
         return transcript_text
     except Exception as e:
-        print(f"Transcript error for video {video_id}: {type(e).__name__}: {e}")
+        # log and continue to fallback
+        print(f"YouTube transcript error for video {video_id}: {type(e).__name__}: {e}")
+
+    return get_transcription_assemblyai(video_id)
+# ---------------- TRANSCRIPTION HELPERS ---------------- #
+
+def get_transcription_assemblyai(video_id):
+    """Use AssemblyAI to transcribe a YouTube video if the normal
+    transcript API fails.
+
+    AssemblyAI accepts a URL to the media, so we simply build the
+    standard YouTube watch link. The function polls until the job
+    completes or errors out.
+    """
+    api_key = os.getenv("ASSEMBLYAI_API_KEY")
+    if not api_key:
+        print("AssemblyAI API key not configured")
         return None
+
+    # use the library's default client which reads settings (including API
+    # key) from environment.  This covers both old and new versions.
+    try:
+        client = assemblyai.Client.get_default()
+    except Exception as client_exc:
+        print("AssemblyAI client creation error:", client_exc)
+        return None
+    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+
+    try:
+        transcript = client.transcript.create(audio_url=youtube_url)
+        # wait for completion
+        while True:
+            status = client.transcript.get(transcript.id)
+            if status.status == "completed":
+                return status.text
+            if status.status == "error":
+                print("AssemblyAI transcription error:", status.error)
+                return None
+            time.sleep(2)
+    except Exception as e:
+        print("AssemblyAI service error:", e)
+        return None
+
 # ---------------- AI BLOG GENERATION ---------------- #
 def generate_blog_from_transcript(transcription):
     try:
@@ -189,275 +236,6 @@ def user_logout(request):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# from django.shortcuts import render, redirect
-# from django.contrib.auth.models import User
-# from django.contrib.auth import authenticate, login, logout
-# from django.contrib.auth.decorators import login_required
-# from django.views.decorators.csrf import csrf_exempt
-# from django.http import JsonResponse
-# from django.conf import settings
-# import json
-# import os
-# from dotenv import load_dotenv
-# import yt_dlp
-# import assemblyai as aai
-# from groq import Groq
-# from .models import BlogPost
-
-# # ✅ LOAD ENV VARIABLES - Specify the exact path
-# env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../.env')
-# load_dotenv(env_path)
-# print(f"Loading .env from: {env_path}")
-
-
-# @login_required
-# def index(request):
-#     return render(request, 'index.html')
-# @csrf_exempt
-# @login_required
-# def generate_blog(request):
-#     if request.method != "POST":
-#         return JsonResponse({'error': 'Invalid request method'}, status=405)
-#     try:
-#         data = json.loads(request.body)
-#         yt_link = data.get('link')
-#         if not yt_link:
-#             return JsonResponse({'error': 'No link provided'}, status=400)
-#     except json.JSONDecodeError:
-#         return JsonResponse({'error': 'Invalid JSON'}, status=400)
-#     try:
-#         print(f"Generating blog for: {yt_link}")
-
-#         # Get video title first
-#         ydl_opts = {'nocheckcertificate': True}
-#         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-#             info = ydl.extract_info(yt_link, download=False)
-#             title = info.get('title', 'Unknown Title')
-
-#         transcription = get_transcription(yt_link)
-#         if not transcription:
-#             return JsonResponse({'error': 'Failed to get transcript. Check server logs for details.'}, status=500)
-#         blog_content = generate_blog_from_transcript(transcription)
-#         if not blog_content:
-#             return JsonResponse({'error': 'Failed to generate blog. Check server logs for details.'}, status=500)
-
-#         # Save the blog post to database
-#         new_blog_article = BlogPost.objects.create(
-#             user=request.user,
-#             youtube_title=title,
-#             youtube_link=yt_link,
-#             generated_content=blog_content,
-#         )
-#         new_blog_article.save()
-
-#         return JsonResponse({'content': blog_content})
-
-#     except Exception as e:
-#         print("SERVER ERROR:", e)
-#         import traceback
-#         traceback.print_exc()
-#         return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
-
-# def download_audio(link):
-#     try:
-#         output_template = os.path.join(settings.MEDIA_ROOT, '%(title)s.%(ext)s')
-        
-#         ydl_opts = {
-#             'format': 'bestaudio/best',
-#             'outtmpl': output_template,
-#             'quiet': True,
-#             'no_warnings': False,
-#             'noplaylist': True,
-#             'nocheckcertificate': True,
-#             "http_headers": {
-#                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-#             },
-#             'sleep_interval': 3,
-#             'max_sleep_interval': 5,
-#             'extractor_args': {
-#                 'youtube': {
-#                     'player_client': ['android']
-#                 }
-#             },
-#             'postprocessors': [{
-#                 'key': 'FFmpegExtractAudio',
-#                 'preferredcodec': 'mp3',
-#                 'preferredquality': '192',
-#             }],
-            
-#         }
-        
-#         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-#             print(f"Downloading audio from: {link}")
-#             info = ydl.extract_info(link, download=True)
-#             audio_file = ydl.prepare_filename(info)
-#             # Change extension to .mp3
-#             base, ext = os.path.splitext(audio_file)
-#             mp3_file = base + '.mp3'
-            
-#             # If the file was converted, it might already be .mp3
-#             if os.path.exists(mp3_file):
-#                 print(f"Audio file ready: {mp3_file}")
-#                 return mp3_file
-#             elif os.path.exists(audio_file):
-#                 print(f"Audio file ready: {audio_file}")
-#                 return audio_file
-#             else:
-#                 print(f"Audio file not found at expected locations")
-#                 return None
-                
-#     except Exception as e:
-#         print(f"Download error: {e}")
-#         import traceback
-#         traceback.print_exc()
-#         return None
-
-
-# def get_transcription(link):
-#     try:
-#         print("Starting download...")
-#         audio_file = download_audio(link)
-#         if not audio_file:
-#             print("Audio download failed.")
-#             return None
-        
-#         # Check if file actually exists
-#         if not os.path.exists(audio_file):
-#             print(f"Audio file does not exist at path: {audio_file}")
-#             return None
-            
-#         print("Audio downloaded:", audio_file)
-#         api_key = os.getenv("ASSEMBLYAI_API_KEY")
-#         print("AssemblyAI Key:", api_key if api_key else "NOT SET")
-#         if not api_key:
-#             print("AssemblyAI API key missing!")
-#             return None
-        
-#         aai.settings.api_key = api_key
-        
-#         # Create transcription config with proper speech model
-#         config = aai.TranscriptionConfig(
-#             speech_models=["universal-2"]
-#         )
-        
-#         transcriber = aai.Transcriber()
-#         print("Sending file to AssemblyAI...")
-#         transcript = transcriber.transcribe(audio_file, config=config)
-#         print("Transcript status:", transcript.status)
-        
-#         if transcript.status == "error":
-#             print("AssemblyAI error:", transcript.error)
-#             return None
-            
-#         print("Transcript received successfully.")
-#         return transcript.text
-#     except Exception as e:
-#         print("TRANSCRIPTION CRASH:", str(e))
-#         import traceback
-#         traceback.print_exc()
-#         return None
-
-
-# def generate_blog_from_transcript(transcription):
-#     try:
-#         api_key = os.getenv("GROQ_API_KEY")
-#         print(f"GROQ_API_KEY found: {bool(api_key)}")
-#         if not api_key:
-#             print("Groq API key not found")
-#             return None
-        
-#         print(f"Initializing Groq client...")
-#         client = Groq(api_key=api_key)
-        
-#         prompt = f"""Based on the following transcript, write a professional blog article.
-# Do not mention YouTube.
-# Transcript:
-# {transcription}
-# Article:"""
-        
-#         print(f"Sending request to Groq API...")
-#         completion = client.chat.completions.create(
-#             model="llama-3.1-8b-instant",
-#             messages=[
-#                 {"role": "user", "content": prompt},
-#             ],
-#             temperature=0.7,
-#             max_tokens=1000,
-#         )
-        
-#         print(f"Response received from Groq")
-#         return completion.choices[0].message.content.strip()
-    
-#     except Exception as e:
-#         print("Groq error:", e)
-#         import traceback
-#         traceback.print_exc()
-#         return None
-# # ---------------- AUTH ---------------- #
-
-# @login_required
-# def blog_list(request):
-#     blog_articles = BlogPost.objects.filter(user=request.user)
-#     return render(request, "all-blogs.html", {'blog_articles': blog_articles})
-
-# @login_required
-# def blog_details(request, pk):
-#     blog_article_detail = BlogPost.objects.get(id=pk)
-#     if request.user == blog_article_detail.user:
-#         return render(request, 'blog-details.html', {'blog_article_detail': blog_article_detail})
-#     else:
-#         return redirect('/')
-
-
-# def user_login(request):
-#     if request.method == 'POST':
-#         username = request.POST.get('username')
-#         password = request.POST.get('password')
-#         user = authenticate(request, username=username, password=password)
-#         if user:
-#             login(request, user)
-#             return redirect('/')
-#         else:
-#             return render(request, 'login.html', {
-#                 'error_message': 'Invalid username or password'
-#             })
-#     return render(request, 'login.html')
-# def user_signup(request):
-#     if request.method == 'POST':
-#         username = request.POST.get('username')
-#         email = request.POST.get('email')
-#         password = request.POST.get('password')
-#         repeatPassword = request.POST.get('repeatPassword')
-#         if password != repeatPassword:
-#             return render(request, 'signup.html', {
-#                 'error_message': 'Passwords do not match'
-#             })
-#         try:
-#             user = User.objects.create_user(username, email, password)
-#             login(request, user)
-#             return redirect('/')
-#         except Exception as e:
-#             print("Signup error:", e)
-#             return render(request, 'signup.html', {
-#                 'error_message': 'Error creating account'
-#             })
-#     return render(request, 'signup.html')
-# def user_logout(request):
-#     logout(request)
-#     return redirect('/')
 
 
 
