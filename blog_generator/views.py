@@ -96,15 +96,36 @@ def get_youtube_title(video_id):
     
 # ---------------- TRANSCRIPT FUNCTIONS ---------------- #
 def get_transcription(video_id):
-    """Try YouTube transcript first. If unavailable, fallback to AssemblyAI."""
+    # """Try YouTube transcript first. If unavailable, fallback to AssemblyAI."""
    
+    # try:
+    #     transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+    #     transcript_text = " ".join([entry['text'] for entry in transcript])
+    #     return transcript_text
+    # except Exception as e:
+    #     print(f"YouTube transcript error: {e}")
+    # # fallback to AssemblyAI
+    # return get_transcription_assemblyai(video_id)
+    
+    
+    """Attempt to retrieve a transcript using YouTubeTranscriptApi.
+
+    If the YouTube API call fails (missing method, no transcript, etc.), we
+    fall back to AssemblyAI. This version avoids using
+    ``list_transcripts`` which may not exist in older installations.
+    """
+
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-        transcript_text = " ".join([entry['text'] for entry in transcript])
+        # instantiate client (allows better compatibility across versions)
+        api = YouTubeTranscriptApi()
+        transcript_data = api.fetch(video_id, languages=["en"])
+        # the returned object is iterable of FetchedTranscriptSnippet
+        transcript_text = " ".join([snippet.text for snippet in transcript_data])
         return transcript_text
     except Exception as e:
-        print(f"YouTube transcript error: {e}")
-    # fallback to AssemblyAI
+        # log and continue to fallback
+        print(f"YouTube transcript error for video {video_id}: {type(e).__name__}: {e}")
+
     return get_transcription_assemblyai(video_id)
 # ---------------- TRANSCRIPTION HELPERS ---------------- #
 def get_transcription_assemblyai(video_id):
@@ -115,9 +136,10 @@ def get_transcription_assemblyai(video_id):
         return None
     try:
         assemblyai.settings.api_key = api_key
-        transcriber = assemblyai.Transcriber()
         youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-        transcript = transcriber.transcribe(youtube_url)
+        transcriber = assemblyai.Transcriber()
+        config = assemblyai.TranscriptionConfig(speech_model="universal-2")
+        transcript = transcriber.transcribe(youtube_url, config=config)
         if transcript.status == "error":
             print("AssemblyAI transcription error:", transcript.error)
             return None
