@@ -44,7 +44,7 @@ def generate_blog(request):
         if not video_id:
             return JsonResponse({'error': 'Invalid YouTube URL'}, status=400)
         # Get transcript
-        transcription = transcription[:1200]
+        # transcription = transcription[:1200]
         transcription = get_transcription(video_id)
         if not transcription:
             return JsonResponse({'error': 'Transcript not available for this video'}, status=500)
