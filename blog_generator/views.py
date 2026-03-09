@@ -15,6 +15,7 @@ import re
 import requests
 import time
 import yt_dlp
+from django.conf import settings
 
 
 
@@ -117,40 +118,91 @@ def get_transcription(video_id):
     """
 
     try:
-        # instantiate client (allows better compatibility across versions)
-        api = YouTubeTranscriptApi()
-        transcript_data = api.fetch(video_id, languages=["en"])
-        # the returned object is iterable of FetchedTranscriptSnippet
-        transcript_text = " ".join([snippet.text for snippet in transcript_data])
-        return transcript_text
+        pass
+        # # instantiate client (allows better compatibility across versions)
+        # api = YouTubeTranscriptApi()
+        # transcript_data = api.fetch(video_id, languages=["en"])
+        # # the returned object is iterable of FetchedTranscriptSnippet
+        # transcript_text = " ".join([snippet.text for snippet in transcript_data])
+        # return transcript_text
     except Exception as e:
+        pass
         # log and continue to fallback
-        print(f"YouTube transcript error for video {video_id}: {type(e).__name__}: {e}")
+        # print(f"YouTube transcript error for video {video_id}: {type(e).__name__}: {e}")
 
     return get_transcription_assemblyai(video_id)
 # ---------------- TRANSCRIPTION HELPERS ---------------- #
 
+# def download_youtube_audio(video_id):
+#     """Download YouTube audio and return file path"""
+#     try:
+#         url = f"https://www.youtube.com/watch?v={video_id}"
+#         audio_dir = os.path.join(settings.Media_Root, 'youtube_audio')
+#         if not os.path.exists(audio_dir):
+#             os.makedirs(audio_dir)
+#         output_file = os.path.join(audio_dir, f"{video_id}.mp3")
+            
+#         ydl_opts = {
+#             'format': 'bestaudio/best',
+#             'outtmpl': output_file,
+#             'quiet': True,
+#             'postprocessors': [{
+#                 'key': 'FFmpegExtractAudio',
+#                 'preferredcodec': 'mp3',
+#                 'preferredquality': '192',
+#             }],
+#         }
+#         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+#             ydl.download([url])
+#         return output_file
+#     except Exception as e:
+#         print("Audio download error:", e)
+#         return None
+
 def download_youtube_audio(video_id):
-    """Download YouTube audio and return file path"""
     try:
         url = f"https://www.youtube.com/watch?v={video_id}"
-        output_file = f"/tmp/{video_id}.mp3"
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': output_file,
-            'quiet': True,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        return output_file
+        output_template = os.path.join(settings.MEDIA_ROOT, '%(title)s.%(ext)s')
+        ydl_opts = { 
+        'format': 'bestaudio/best', 
+        'postprocessors': [{ 
+            'key': 'FFmpegExtractAudio', 
+            'preferredcodec': 'mp3', 
+            'preferredquality': '192', 
+        }], 
+        'outtmpl': output_template, 
+        'quiet': True, 
+        'no_warnings': False, 
+        'noplaylist': True, 
+        'nocheckcertificate': True, 
+        "http_headers": { 
+            "User-Agent": "Mozilla/5.0(Windows NT 10.0; Win64; x64)" 
+        }, 
+        } 
+     
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl: 
+         print(f"Downloading audio from: {video_id}") 
+        info = ydl.extract_info(url, download=True) 
+        audio_file = ydl.prepare_filename(info) 
+        # Change extension to .mp3 
+        base, ext = os.path.splitext(audio_file) 
+        mp3_file = base + '.mp3' 
+         
+        # If the file was converted, it might already be .mp3 
+        if os.path.exists(mp3_file): 
+            print(f"Audio file ready: {mp3_file}") 
+            return mp3_file 
+        elif os.path.exists(audio_file): 
+            print(f"Audio file ready: {audio_file}") 
+            return audio_file 
+        else: 
+            print(f"Audio file not found at expected locations") 
+            return None 
     except Exception as e:
         print("Audio download error:", e)
         return None
+    
+        
 
 def get_transcription_assemblyai(video_id):
     """Use AssemblyAI to transcribe the YouTube video when transcript is unavailable."""
@@ -160,7 +212,7 @@ def get_transcription_assemblyai(video_id):
         return None
     try:
         assemblyai.settings.api_key = api_key
-        audio_file = download_youtube_audio(audio_file)
+        audio_file = download_youtube_audio(video_id)
         if not audio_file:
             print("Audio download failed")
             return None
