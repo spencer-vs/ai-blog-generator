@@ -93,61 +93,34 @@ def get_youtube_title(video_id):
     
     
     
+# ---------------- TRANSCRIPT FUNCTIONS ---------------- #
 def get_transcription(video_id):
-    """Attempt to retrieve a transcript using YouTubeTranscriptApi.
-
-    If the YouTube API call fails (missing method, no transcript, etc.), we
-    fall back to AssemblyAI. This version avoids using
-    ``list_transcripts`` which may not exist in older installations.
-    """
-
+    """Try YouTube transcript first. If unavailable, fallback to AssemblyAI."""
+   
     try:
-        # instantiate client (allows better compatibility across versions)
-        api = YouTubeTranscriptApi()
-        transcript_data = api.fetch(video_id, languages=["en"])
-        # the returned object is iterable of FetchedTranscriptSnippet
-        transcript_text = " ".join([snippet.text for snippet in transcript_data])
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+        transcript_text = " ".join([entry['text'] for entry in transcript])
         return transcript_text
     except Exception as e:
-        # log and continue to fallback
-        print(f"YouTube transcript error for video {video_id}: {type(e).__name__}: {e}")
-
+        print(f"YouTube transcript error: {e}")
+    # fallback to AssemblyAI
     return get_transcription_assemblyai(video_id)
 # ---------------- TRANSCRIPTION HELPERS ---------------- #
-
 def get_transcription_assemblyai(video_id):
-    """Use AssemblyAI to transcribe a YouTube video if the normal
-    transcript API fails.
-
-    AssemblyAI accepts a URL to the media, so we simply build the
-    standard YouTube watch link. The function polls until the job
-    completes or errors out.
-    """
+    """Use AssemblyAI to transcribe the YouTube video when transcript is unavailable."""
     api_key = os.getenv("ASSEMBLYAI_API_KEY")
     if not api_key:
-        print("AssemblyAI API key not configured")
+        print("AssemblyAI API key missing")
         return None
-
-    # use the library's default client which reads settings (including API
-    # key) from environment.  This covers both old and new versions.
     try:
-        client = assemblyai.Client.get_default()
-    except Exception as client_exc:
-        print("AssemblyAI client creation error:", client_exc)
-        return None
-    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-
-    try:
-        transcript = client.transcript.create(audio_url=youtube_url)
-        # wait for completion
-        while True:
-            status = client.transcript.get(transcript.id)
-            if status.status == "completed":
-                return status.text
-            if status.status == "error":
-                print("AssemblyAI transcription error:", status.error)
-                return None
-            time.sleep(2)
+        assemblyai.settings.api_key = api_key
+        transcriber = assemblyai.Transcriber()
+        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+        transcript = transcriber.transcribe(youtube_url)
+        if transcript.status == "error":
+            print("AssemblyAI transcription error:", transcript.error)
+            return None
+        return transcript.text
     except Exception as e:
         print("AssemblyAI service error:", e)
         return None
