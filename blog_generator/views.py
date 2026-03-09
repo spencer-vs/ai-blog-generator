@@ -14,6 +14,7 @@ from .models import BlogPost
 import re
 import requests
 import time
+import yt_dlp
 
 
 
@@ -128,6 +129,29 @@ def get_transcription(video_id):
 
     return get_transcription_assemblyai(video_id)
 # ---------------- TRANSCRIPTION HELPERS ---------------- #
+
+def download_youtube_audio(video_id):
+    """Download YouTube audio and return file path"""
+    try:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        output_file = f"/tmp/{video_id}.mp3"
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': output_file,
+            'quiet': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        return output_file
+    except Exception as e:
+        print("Audio download error:", e)
+        return None
+
 def get_transcription_assemblyai(video_id):
     """Use AssemblyAI to transcribe the YouTube video when transcript is unavailable."""
     api_key = os.getenv("ASSEMBLYAI_API_KEY")
@@ -136,16 +160,24 @@ def get_transcription_assemblyai(video_id):
         return None
     try:
         assemblyai.settings.api_key = api_key
-        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+        audio_file = download_youtube_audio(audio_file)
+        if not audio_file:
+            print("Audio download failed")
+            return None
         transcriber = assemblyai.Transcriber()
         config = assemblyai.TranscriptionConfig(
         speech_models=["universal-3-pro", "universal-2"],
         language_detection=True
         )      
-        transcript = transcriber.transcribe(youtube_url, config=config)
+        transcript = transcriber.transcribe(audio_file, config=config)
         if transcript.status == "error":
             print("AssemblyAI transcription error:", transcript.error)
             return None
+        
+        try:
+            os.remove(audio_file)
+        except:
+            pass
         return transcript.text
     except Exception as e:
         print("AssemblyAI service error:", e)
