@@ -138,7 +138,10 @@ def get_transcription_assemblyai(video_id):
         assemblyai.settings.api_key = api_key
         youtube_url = f"https://www.youtube.com/watch?v={video_id}"
         transcriber = assemblyai.Transcriber()
-        config = assemblyai.TranscriptionConfig(speech_model="universal")
+        config = assemblyai.TranscriptionConfig(
+        speech_models=["universal-3-pro", "universal-2"],
+        language_detection=True
+        )      
         transcript = transcriber.transcribe(youtube_url, config=config)
         if transcript.status == "error":
             print("AssemblyAI transcription error:", transcript.error)
@@ -155,6 +158,9 @@ def generate_blog_from_transcript(transcription):
         if not api_key:
             print("Groq API key not found")
             return None
+        
+        
+        transcription = transcription[:1200]
         client = Groq(api_key=api_key)
         prompt = f"""
         Based on the generated transcript, create a blog post based on the YouTube video, covering all aspects of the video.
