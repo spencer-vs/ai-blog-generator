@@ -138,7 +138,7 @@ def get_transcription_assemblyai(video_id):
         assemblyai.settings.api_key = api_key
         youtube_url = f"https://www.youtube.com/watch?v={video_id}"
         transcriber = assemblyai.Transcriber()
-        config = assemblyai.TranscriptionConfig(speech_model="universal-2")
+        config = assemblyai.TranscriptionConfig(speech_model="universal")
         transcript = transcriber.transcribe(youtube_url, config=config)
         if transcript.status == "error":
             print("AssemblyAI transcription error:", transcript.error)
