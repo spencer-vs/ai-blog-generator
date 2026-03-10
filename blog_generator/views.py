@@ -140,7 +140,7 @@ def get_transcription_proxy(video_id):
         response = requests.get(url, headers=headers, params=querystring)
         if response.status_code == 200:
             data = response.json()
-            print("RAPIDAPI_KEY:", os.getenv("RAPID_API_KEY"))
+            #print("RAPIDAPI_KEY:", os.getenv("RAPID_API_KEY"))
             # Handle both possible formats
             if isinstance(data, dict) and "transcript" in data:
                 transcript_list = data["transcript"]
